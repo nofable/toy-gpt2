@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# macOS / editors
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Data (downloaded or tokenized; regenerate with scripts)
+data/
+*.bin
+*.npy
+*.npz
+
+# Training outputs
+checkpoints/
+*.pt
+*.pth
+*.safetensors
+runs/
+logs/
+wandb/
+
+# Secrets
+.env
+.env.*

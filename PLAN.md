@@ -29,8 +29,8 @@ Build a GPT from scratch, train it, and publish it, as a learning project with c
 |---|---|---|
 | 0 | Setup | ✅ Done, 2026-11-09 |
 | 1 | Bigram baseline | ✅ Done, 2026-11-10 (val loss 2.49) |
-| 2 | Tokenizer | ▶️ Next |
-| 3 | GPT model | |
+| 2 | Tokenizer | ✅ Done, 2026-11-11 (1.84 vs GPT-2 3.34 bytes/token) |
+| 3 | GPT model | ▶️ Next |
 | 4 | Training loop + TinyStories | |
 | 5 | Experiments | |
 | 6 | Scale-up prep | |

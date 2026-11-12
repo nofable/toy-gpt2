@@ -23,3 +23,19 @@ Result: 3,000 steps, about 6 s on the M5 (MPS). Final train 2.47, val 2.49. The 
 - **Pre-tokenization matters.** Ours learned tokens like `'Citizen:\n'` and `'.\n\nV'`, which overfit this text. GPT-2 first splits the text with a regex (words with a leading space, numbers, punctuation, whitespace), so merges never cross those boundaries and `' Citizen'` is reusable everywhere.
 - **Why LLMs can't spell:** `' strawberry'` is a single GPT-2 token (41236). The model sees one ID, not letters. `'strawberry'` without the leading space is `st`+`raw`+`berry`, and `' Strawberry'` is yet another ID.
 - **Python gotchas I hit:** iterating over a dict gives its *keys* (use `.items()` or `key=d.get`). After a merge, don't skip the next element. Dicts keep insertion order, so `self.merges` is already in the order the merges were learned.
+
+## Milestone 3: GPT (decoder-only transformer)
+
+- **Decoder only:** GPT drops the encoder and cross-attention. There's no separate input to condition on, because the prompt is simply the start of the sequence (translation becomes `"French: …\nEnglish:"` + continue).
+- **Causal mask:** position t may only attend to positions ≤ t. Without it, training lets each position copy its target, so the loss → 0 and the model is useless at generation. Implementation: scores `masked_fill(mask == 0, -inf)` before softmax (e^−∞ = 0; masking with **0** is wrong, since e⁰ = 1). Store one big `tril` buffer and slice `[:T, :T]`, because its top-left block is itself a valid causal mask.
+- **Scale by √(head size)**, not √T. A dot product of `hs`-length vectors has variance ∝ hs, and large scores saturate softmax, which makes gradients vanish.
+- **Multi-head = splitting the channels:** `view(B, T, nh, hs).transpose(1, 2)`. No data moves. `view` reinterprets memory, `transpose` swaps strides, and `.contiguous()` copies the data so that `view` works again afterwards.
+- **"Attention communicates, the MLP computes."** Attention is the only place positions exchange information. The MLP processes each position independently with shared weights (all B·T positions in one matmul) and holds about 2/3 of each block's parameters.
+- **Pre-LN:** `x = x + attn(ln1(x))`. The residual stream is never normalised, only added to, so d(x + f(x))/dx = I + f′ gives the gradient a clean path to the first layer. That's why the model needs a final `ln_f`.
+- **Learned position embeddings:** use `wpe(pos)`, NOT `wpe(idx)`. That bug runs silently (token IDs < block_size) and leaves the model unable to tell positions apart. Attention by itself doesn't know about order.
+- **Weight tying:** `lm_head.weight = wte.weight`. The shapes match because Linear stores `(out, in)`. One shared space of token vectors: the blocks move the residual stream from "current token" towards "next token", and the logit is h·e_token. Trade-off: it saves vocab×C parameters (about 30% of GPT-2) and helps rare tokens, but it adds a bias towards repeating the current token (an untrained tied model scored 3.80 < ln 65 on targets = inputs). Many larger models don't tie.
+- **Parameter count by hand: 818,048**, an exact match. The embeddings are only 3% here (vocab 65), but about 30% of GPT-2 (vocab 50,257).
+- **Sanity check:** overfit one batch (4.23 → 0.02 in 300 steps). If a model can't memorise 32 examples, something is broken.
+- **Python/PyTorch gotchas:** `.T` on a 4D tensor reverses ALL dims (use `transpose(-2, -1)`). `torch.where` needs a bool condition. `nn.ModuleList` has no forward, so loop over it. Call modules directly (`m(x)`, not `m.forward(x)`).
+
+Result: 2,000 steps, 58 s on the M5. **Val 1.66** (bigram 2.49; my estimate from reasoning was 1.6–1.8, my hunch was 2.0). Real words and character names. Train–val gap 0.20 and growing, the start of overfitting on 1MB of text.

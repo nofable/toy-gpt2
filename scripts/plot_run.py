@@ -8,6 +8,7 @@ import csv
 from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -39,6 +40,8 @@ def main() -> None:
 
     ax_loss.set_ylabel("cross-entropy loss")
     ax_loss.set_yscale("log")
+    ax_loss.yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.1f"))
+    ax_loss.yaxis.set_minor_formatter(matplotlib.ticker.FormatStrFormatter("%.1f"))
     ax_loss.grid(alpha=0.3)
     ax_loss.legend()
     ax_lr.set_ylabel("learning rate")

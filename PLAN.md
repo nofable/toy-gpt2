@@ -31,8 +31,8 @@ Build a GPT from scratch, train it, and publish it, as a learning project with c
 | 1 | Bigram baseline | ✅ Done, 2026-11-10 (val loss 2.49) |
 | 2 | Tokenizer | ✅ Done, 2026-11-11 (1.84 vs GPT-2 3.34 bytes/token) |
 | 3 | GPT model | ✅ Done, 2026-11-12 (char val 1.66 vs bigram 2.49) |
-| 4 | Training loop + TinyStories | ▶️ Next |
-| 5 | Experiments | |
+| 4 | Training loop + TinyStories | ✅ Done, 2026-11-15 (30M params, val 1.674) |
+| 5 | Experiments | ▶️ Next |
 | 6 | Scale-up prep | |
 | 7 | GPT-2 124M cloud run | |
 | 8 | Polish & publish | |
@@ -63,6 +63,7 @@ Add AdamW, a learning-rate schedule, gradient clipping, train/val evaluation, ch
 ### 5. Experiments: the fun part (≈4–6 hrs)
 Run small, cheap ablations, for example model size against loss, learning-rate sweeps, and removing one component to see what breaks.
 Candidate experiments: tied vs untied embeddings; no position embeddings; post-LN vs pre-LN; model size vs loss.
+**Modern upgrades (GPT-2 → Llama-style block):** swap in RMSNorm, RoPE, and SwiGLU one at a time and measure each change in val loss on TinyStories with the same token budget.
 *Done when:* you have 2–3 plots, each with a one-paragraph takeaway, for the README.
 
 ### 6. Prepare for the scale-up (≈4–6 hrs)

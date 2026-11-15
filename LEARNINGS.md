@@ -39,3 +39,18 @@ Result: 3,000 steps, about 6 s on the M5 (MPS). Final train 2.47, val 2.49. The 
 - **Python/PyTorch gotchas:** `.T` on a 4D tensor reverses ALL dims (use `transpose(-2, -1)`). `torch.where` needs a bool condition. `nn.ModuleList` has no forward, so loop over it. Call modules directly (`m(x)`, not `m.forward(x)`).
 
 Result: 2,000 steps, 58 s on the M5. **Val 1.66** (bigram 2.49; my estimate from reasoning was 1.6–1.8, my hunch was 2.0). Real words and character names. Train–val gap 0.20 and growing, the start of overfitting on 1MB of text.
+
+## Milestone 4: Proper training loop and TinyStories
+
+- **Data:** TinyStories V2, 2.7M stories → **541M GPT-2 tokens** (1.08 GB as uint16, memory-mapped so it never fully loads into RAM). 4.1 bytes/token, since simple English suits GPT-2's vocabulary. Tokenizing took about 1 minute.
+- **LR schedule:** linear warmup → cosine decay → a `min_lr` floor. Warmup: early gradients are large and noisy, and Adam's moment estimates haven't settled. Decay: mini-batch noise means a constant LR bounces around a **noise floor** ∝ LR. I saw it: val dropped 0.03 in one eval once the LR reached its floor.
+- **AdamW details:** decay only `p.dim() >= 2` (a LayerNorm scale's neutral value is 1, not 0). betas (0.9, 0.95). Optimizer state (m, v) is 2× the model size, so save it to resume safely.
+- **Gradient clipping** to norm 1.0: insurance against rare spikes. Step 0 had grad norm 5.1, which settled to about 0.7. `clip_grad_norm_` returns the pre-clip norm, which is what you want to log.
+- **Sampling:** temperature divides the logits (T < 1 sharper, T > 1 flatter). Top-k: threshold at the k-th largest value with `v[:, [-1]]` (keeps the dim so it broadcasts), set the rest to −∞. It removes the long tail of nonsense tokens.
+- **Initial loss = ln(50,257) = 10.83**, predicted, and observed 10.87.
+- **Order of learning:** unigram frequencies first ("the the. a to a big day" by step 50), then grammar, then consistent characters and simple plots.
+- **No overfitting:** we saw only 41M of 541M tokens (< 8%), none twice, so train ≈ val throughout. The question becomes underfitting: the loss was still falling at the end, so more tokens or a bigger model would help.
+- **Eval noise:** final val 1.682 versus 1.674 one eval earlier. That's noise from only 20 eval batches, not getting worse. Use more eval batches for headline numbers.
+- **Ops:** stdout redirected to a file is *buffered* (the console log lagged 20 min behind the CSV). Use `python -u` / `flush=True` for runs you'll monitor remotely.
+
+Result: **30M params** (6 layers, 6 heads, 384 dim, 256 context; 19M of it is the embedding), 5,000 steps × 8,192 tokens = 41M tokens, **101 min on the M5** at about 7k tok/s. **Best val 1.674.** The samples are coherent short stories with named characters, dialogue, and the odd logic slip ("I am not a real dragon").

@@ -147,11 +147,18 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int) -> torch.Tensor:
+    def generate(
+        self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0, top_k: int | None = None
+    ) -> torch.Tensor:
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.cfg.block_size :]  # Q: why crop?
             logits, _ = self(idx_cond)
-            probs = F.softmax(logits[:, -1, :], dim=-1)
+            logits = logits[:, -1, :]  # (B, vocab_size)
+            logits = logits / temperature  # T < 1 sharpens, T > 1 flattens
+            if top_k is not None:
+                v, _ = torch.topk(logits, top_k, dim=-1)  # (B, k), largest first
+                logits[logits < v[:, [-1]]] = float("-inf")  # drop everything below the k-th largest
+            probs = F.softmax(logits, dim=-1)
             idx = torch.cat((idx, torch.multinomial(probs, 1)), dim=1)
         return idx
 

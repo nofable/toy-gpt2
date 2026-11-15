@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
     "tiktoken>=0.14.0",
     "torch>=2.15.0",
     "torchvision>=0.29.2",

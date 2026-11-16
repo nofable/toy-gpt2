@@ -5,8 +5,9 @@
 #   ./scripts/exp_arch.sh postln     # B: post-LN
 #
 # Runs from a frozen snapshot of the code, so editing src/ while it runs can't break it.
+# Architecture flags are pinned to GPT-2 so these runs reproduce now that train.py defaults to the modern stack.
 set -euo pipefail
-COMMON="--max_iters 1500 --warmup_iters 100 --eval_interval 250 --eval_iters 50 --n_layer 6 --n_head 6 --n_embd 384"
+COMMON="--max_iters 1500 --warmup_iters 100 --eval_interval 250 --eval_iters 50 --n_layer 6 --n_head 6 --n_embd 384 --norm layernorm --norm_position pre --pos_emb learned --mlp gelu"
 
 SNAP=runs/_snapshot_$1
 rm -rf "$SNAP" && mkdir -p "$SNAP" && cp -R src/toy_gpt2 "$SNAP"/

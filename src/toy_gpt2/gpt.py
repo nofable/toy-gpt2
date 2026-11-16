@@ -1,24 +1,19 @@
-"""Milestone 3: a GPT (decoder-only transformer), character-level on Tiny Shakespeare.
+"""The GPT model (decoder-only transformer). Model code only: no data, no training loop.
 
-Run with:
-  uv run python -m toy_gpt2.gpt overfit   # sanity check: memorise ONE batch -> loss near 0
-  uv run python -m toy_gpt2.gpt train     # real training; beat the bigram's val loss of 2.49
+GPTConfig defaults = the original GPT-2 design (pre-LN, LayerNorm, learned positions, GELU), so old
+checkpoints and the Milestone 5 baselines load unchanged. The modern stack we chose after Milestone 5
+(pre-LN + RMSNorm + RoPE + SwiGLU) is the default in train.py instead.
 
-Fill in every `TODO`.
-
-Shape legend (values for the default config):
-  B  = batch: sequences processed in parallel        (32)
-  T  = time: positions in each sequence              (up to 128)
-  C  = channels: width of each position's vector     (128 = n_embd)
-  nh = number of attention heads                     (4)
-  hs = head size = C // nh                           (32)
+Shape legend:
+  B  = batch: sequences processed in parallel
+  T  = time: positions in each sequence (up to block_size)
+  C  = channels: width of each position's vector (n_embd)
+  nh = number of attention heads
+  hs = head size = C // nh
 """
 
-import argparse
 import math
-import time
 from dataclasses import dataclass
-from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -238,91 +233,9 @@ class GPT(nn.Module):
         return idx
 
 
-# --- data (character-level, same as the bigram) -----------------------------
 def get_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
     if torch.backends.mps.is_available():
         return "mps"
     return "cpu"
-
-
-text = Path("data/shakespeare/input.txt").read_text()
-chars = sorted(set(text))
-stoi = {c: i for i, c in enumerate(chars)}
-itos = {i: c for c, i in stoi.items()}
-data = torch.tensor([stoi[c] for c in text], dtype=torch.long)
-n = int(0.9 * len(data))
-splits = {"train": data[:n], "val": data[n:]}
-
-
-def decode(ids: list[int]) -> str:
-    return "".join(itos[i] for i in ids)
-
-
-def get_batch(split: str, batch_size: int, block_size: int, device: str):
-    src = splits[split]
-    ix = torch.randint(len(src) - block_size, (batch_size,))
-    x = torch.stack([src[i : i + block_size] for i in ix])
-    y = torch.stack([src[i + 1 : i + block_size + 1] for i in ix])
-    return x.to(device), y.to(device)
-
-
-@torch.no_grad()
-def estimate_loss(model, cfg, batch_size, device, iters=50):
-    model.eval()
-    out = {}
-    for split in ("train", "val"):
-        losses = [model(*get_batch(split, batch_size, cfg.block_size, device))[1].item() for _ in range(iters)]
-        out[split] = sum(losses) / len(losses)
-    model.train()
-    return out
-
-
-# --- entry points -------------------------------------------------------------
-def main() -> None:
-    mode = argparse.ArgumentParser()
-    mode.add_argument("mode", choices=["overfit", "train"])
-    mode = mode.parse_args().mode
-
-    torch.manual_seed(1337)
-    device = get_device()
-    cfg = GPTConfig(vocab_size=len(chars))
-    model = GPT(cfg).to(device)
-    n_params = sum(p.numel() for p in model.parameters())
-    print(f"device={device}  params={n_params:,}  (predict this by hand first!)")
-
-    batch_size = 32
-    if mode == "overfit":
-        # A correct model + training step can memorise a single batch almost perfectly.
-        x, y = get_batch("train", batch_size, cfg.block_size, device)
-        opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
-        for step in range(301):
-            _, loss = model(x, y)
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            if step % 50 == 0:
-                print(f"step {step:4d}  loss {loss.item():.4f}")
-        return
-
-    # mode == "train"
-    max_iters, eval_interval = 2000, 250
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
-    t0 = time.time()
-    for it in range(max_iters + 1):
-        if it % eval_interval == 0:
-            l = estimate_loss(model, cfg, batch_size, device)
-            print(f"step {it:5d}  train {l['train']:.4f}  val {l['val']:.4f}  ({time.time() - t0:.0f}s)")
-        x, y = get_batch("train", batch_size, cfg.block_size, device)
-        _, loss = model(x, y)
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
-    print(f"\nbigram baseline val: 2.49  (ln 65 = {math.log(65):.2f})\n")
-    ctx = torch.zeros((1, 1), dtype=torch.long, device=device)
-    print(decode(model.generate(ctx, 500)[0].tolist()))
-
-
-if __name__ == "__main__":
-    main()

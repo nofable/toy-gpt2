@@ -3,8 +3,9 @@
 # 1,500 steps x 8,192 tokens = 12.3M tokens per run.
 #
 # Runs from a frozen snapshot of the code, so editing src/ while it runs can't break it.
+# Architecture flags are pinned to GPT-2 so these runs reproduce now that train.py defaults to the modern stack.
 set -euo pipefail
-COMMON="--max_iters 1500 --warmup_iters 100 --eval_interval 250 --eval_iters 50"
+COMMON="--max_iters 1500 --warmup_iters 100 --eval_interval 250 --eval_iters 50 --norm layernorm --norm_position pre --pos_emb learned --mlp gelu"
 
 SNAP=runs/_snapshot_model_size
 rm -rf "$SNAP" && mkdir -p "$SNAP" && cp -R src/toy_gpt2 "$SNAP"/

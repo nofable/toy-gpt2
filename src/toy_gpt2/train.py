@@ -35,10 +35,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n_embd", type=int, default=384)
     p.add_argument("--block_size", type=int, default=256)
     p.add_argument("--dropout", type=float, default=0.0)
-    p.add_argument("--norm", choices=["layernorm", "rmsnorm"], default="layernorm")
+    # Architecture: defaults = the modern stack chosen after Milestone 5 (pass the GPT-2 values to get GPT-2).
+    p.add_argument("--norm", choices=["layernorm", "rmsnorm"], default="rmsnorm")
     p.add_argument("--norm_position", choices=["pre", "post"], default="pre")
-    p.add_argument("--pos_emb", choices=["learned", "rope"], default="learned")
-    p.add_argument("--mlp", choices=["gelu", "swiglu"], default="gelu")
+    p.add_argument("--pos_emb", choices=["learned", "rope"], default="rope")
+    p.add_argument("--mlp", choices=["gelu", "swiglu"], default="swiglu")
     # optimisation
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--max_iters", type=int, default=5000)

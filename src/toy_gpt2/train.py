@@ -35,6 +35,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n_embd", type=int, default=384)
     p.add_argument("--block_size", type=int, default=256)
     p.add_argument("--dropout", type=float, default=0.0)
+    p.add_argument("--norm", choices=["layernorm", "rmsnorm"], default="layernorm")
+    p.add_argument("--norm_position", choices=["pre", "post"], default="pre")
+    p.add_argument("--pos_emb", choices=["learned", "rope"], default="learned")
+    p.add_argument("--mlp", choices=["gelu", "swiglu"], default="gelu")
     # optimisation
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--max_iters", type=int, default=5000)
@@ -111,6 +115,7 @@ def main() -> None:
     cfg = GPTConfig(
         vocab_size=enc.n_vocab, block_size=args.block_size, n_layer=args.n_layer,
         n_head=args.n_head, n_embd=args.n_embd, dropout=args.dropout,
+        norm=args.norm, norm_position=args.norm_position, pos_emb=args.pos_emb, mlp=args.mlp,
     )
     model = GPT(cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())

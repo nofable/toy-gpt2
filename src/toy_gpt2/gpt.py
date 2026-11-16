@@ -33,6 +33,64 @@ class GPTConfig:
     n_head: int = 4 # number of heads in multihead attention
     n_embd: int = 128  # C, the width of every vector flowing through the model
     dropout: float = 0.0 # dropour ratio
+    # Milestone 5 switches (defaults = GPT-2)
+    norm: str = "layernorm"  # "layernorm" | "rmsnorm"
+    norm_position: str = "pre"  # "pre" | "post"
+    pos_emb: str = "learned"  # "learned" | "rope"
+    mlp: str = "gelu"  # "gelu" | "swiglu"
+
+
+# --- Milestone 5: modern components -----------------------------------------
+class RMSNorm(nn.Module):
+    """Root-mean-square norm: LayerNorm without the mean-centring and without the bias."""
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))  # learned per-channel scale, starts at 1
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO R: divide x by the root-mean-square of its last dimension, then scale by self.weight.
+        #         Add self.eps inside the square root. Why is it needed?
+        return x * self.weight / torch.sqrt(torch.mean(x ** 2 , dim=-1, keepdim=True) + self.eps)
+
+
+def make_norm(cfg: GPTConfig) -> nn.Module:
+    return RMSNorm(cfg.n_embd) if cfg.norm == "rmsnorm" else nn.LayerNorm(cfg.n_embd)
+
+
+def rope_tables(head_size: int, max_len: int, base: float = 10000.0) -> tuple[torch.Tensor, torch.Tensor]:
+    """cos and sin tables of shape (max_len, head_size // 2): angle[pos, i] = pos * base^(-2i / head_size)."""
+    inv_freq = base ** (-torch.arange(0, head_size, 2).float() / head_size)  # (hs/2,) fast -> slow
+    angles = torch.outer(torch.arange(max_len).float(), inv_freq)  # (max_len, hs/2)
+    return angles.cos(), angles.sin()
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotate each (even, odd) pair of channels of x by its position's angle.
+    x: (B, nh, T, hs)    cos, sin: (T, hs/2)
+    """
+    x1, x2 = x[..., 0::2], x[..., 1::2]  # the two coordinates of each 2D pair, each (B, nh, T, hs/2)
+    # TODO RoPE: rotate each pair (x1, x2) by its angle - the standard 2D rotation:
+    #            x1' = ?    x2' = ?
+    #            then re-interleave into (B, nh, T, hs). (torch.stack(..., dim=-1).flatten(-2) does it.)
+    return torch.stack((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1).flatten(-2)
+
+class SwiGLU(nn.Module):
+    """Gated MLP: down( silu(gate(x)) * up(x) ). Hidden size 8/3*C keeps the parameter count ~= GELU MLP."""
+
+    def __init__(self, cfg: GPTConfig):
+        super().__init__()
+        C = cfg.n_embd
+        hidden = int(8 * C / 3)
+        self.gate = nn.Linear(C, hidden, bias=False)
+        self.up = nn.Linear(C, hidden, bias=False)
+        self.down = nn.Linear(hidden, C, bias=False)
+        self.dropout = nn.Dropout(cfg.dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO SW: one line, following the docstring. F.silu is the activation.
+        return self.dropout(self.down(F.silu(self.gate(x)) * self.up(x)))
 
 
 # --- model ------------------------------------------------------------------
@@ -47,6 +105,11 @@ class CausalSelfAttention(nn.Module):
         # Lower-triangular ones: mask[t, s] == 1 means position t may attend to position s.
         mask = torch.tril(torch.ones(cfg.block_size, cfg.block_size))
         self.register_buffer("mask", mask.view(1, 1, cfg.block_size, cfg.block_size))
+        self.use_rope = cfg.pos_emb == "rope"
+        if self.use_rope:
+            cos, sin = rope_tables(cfg.n_embd // cfg.n_head, cfg.block_size)
+            self.register_buffer("rope_cos", cos, persistent=False)
+            self.register_buffer("rope_sin", sin, persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, C = x.shape
@@ -56,6 +119,9 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, hs).transpose(1, 2)
         k = k.view(B, T, self.n_head, hs).transpose(1, 2)
         v = v.view(B, T, self.n_head, hs).transpose(1, 2)
+        if self.use_rope:  # rotate queries and keys by position (not values)
+            q = apply_rope(q, self.rope_cos[:T], self.rope_sin[:T])
+            k = apply_rope(k, self.rope_cos[:T], self.rope_sin[:T])
         # --- my first version (step by step) ---
         # scores = q @ k.transpose(-2, -1)
         # scaled = scores / k.size(dim=-1)**0.5
@@ -92,14 +158,19 @@ class MLP(nn.Module):
 class Block(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
-        self.ln1 = nn.LayerNorm(cfg.n_embd)
+        self.ln1 = make_norm(cfg)
         self.attn = CausalSelfAttention(cfg)
-        self.ln2 = nn.LayerNorm(cfg.n_embd)
-        self.mlp = MLP(cfg)
+        self.ln2 = make_norm(cfg)
+        self.mlp = SwiGLU(cfg) if cfg.mlp == "swiglu" else MLP(cfg)
+        self.post_ln = cfg.norm_position == "post"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO C: two residual sub-layers, PRE-LN style (normalise the input to each
-        #         sub-layer, not the output). Two lines.
+        if self.post_ln:
+            # TODO P: the original 2017 transformer's POST-LN block (two lines).
+            #         Normalise AFTER the residual add. What does that do to the residual stream?
+            x = self.ln1(self.attn(x) + x)
+            x = self.ln2(self.mlp(x) + x)
+            return x
         x = x + self.attn(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
         return x
@@ -110,10 +181,12 @@ class GPT(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.wte = nn.Embedding(cfg.vocab_size, cfg.n_embd)  # token embeddings
-        self.wpe = nn.Embedding(cfg.block_size, cfg.n_embd)  # position embeddings (learned)
+        # learned position embeddings - unless RoPE handles position inside attention instead
+        self.wpe = nn.Embedding(cfg.block_size, cfg.n_embd) if cfg.pos_emb == "learned" else None
         self.drop = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layer)])
-        self.ln_f = nn.LayerNorm(cfg.n_embd)
+        # pre-LN needs a final norm (nothing else normalises the residual stream); post-LN already ends normalised
+        self.ln_f = make_norm(cfg) if cfg.norm_position == "pre" else nn.Identity()
         self.lm_head = nn.Linear(cfg.n_embd, cfg.vocab_size, bias=False)
         self.lm_head.weight = self.wte.weight
         # TODO D: weight tying - make lm_head and wte share one weight matrix (one line).
@@ -134,7 +207,9 @@ class GPT(nn.Module):
         assert T <= self.cfg.block_size
         pos = torch.arange(T, device=idx.device)
         # TODO E: token emb + position emb -> dropout -> blocks -> final LayerNorm -> lm_head
-        x = self.wte(idx) + self.wpe(pos)
+        x = self.wte(idx)
+        if self.wpe is not None:
+            x = x + self.wpe(pos)
         x = self.drop(x)
         for block in self.blocks:
             x = block(x)

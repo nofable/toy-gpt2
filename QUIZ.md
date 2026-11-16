@@ -179,3 +179,10 @@ Weight decay pulls towards **0**. That's a sensible default for weight matrices 
 
 Elementwise GPU operations are **memory-bound**: each one reads the whole tensor from memory, does a tiny bit of maths, and writes it all back. Hand-written RMSNorm = ~6 separate operations = ~6 round trips. `nn.LayerNorm` = one **fused kernel** = one read, one write. Moving data costs more than the arithmetic. Fixes: kernel fusion (`F.rms_norm`, `torch.compile`). Flash Attention is the same idea applied to attention.
 </details>
+
+### 18. 🔁 Post-LN won at 6 layers. So why does every large model use pre-LN?
+
+<details><summary>Answer</summary>
+
+Look at what gets normalised. **Pre-LN** normalises only each sub-layer's *input*; the residual stream itself is never normalised, so gradients flow straight through (I + f′) to the first layer. That makes very deep stacks train stably, even without careful warmup. **Post-LN** normalises the whole stream after every block, which constrains the representation more tightly and can give a better final loss, but the gradient has to pass through a LayerNorm at every layer, so at depth it becomes unstable early in training (needs long warmup, can diverge). At 6 layers that instability doesn't bite; at 48+ it does. Large models trade a little quality for reliability.
+</details>

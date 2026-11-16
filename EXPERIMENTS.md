@@ -33,7 +33,9 @@ should matter more as depth grows.
 **Result vs prediction:** ❌ predicted no change; post-LN was **better** by 0.05. It started slower (3.27 vs 3.17 at step 250)
 and overtook by step 500.
 
-**Takeaway (William):** _TODO_
+**Takeaway (William):**
+I was surprised by this one because I assumed pre-LN would be the same or better since modern models have switched to it since 2017 transformer.
+However, with the small size of our model, post-LN outperformed. pre-LN is better at larger scale models to keep the residual stream in tact and combat vanishing gradients. but post-LN outperforms with the scale of our model due to more holistic normalisation.
 
 ## C. Modern upgrades, cumulative ✅
 
@@ -53,4 +55,7 @@ and overtook by step 500.
 ![architecture](assets/architecture.png)
 *(Note: the y-axis starts at 1.9 to make the differences visible.)*
 
-**Takeaway (William):** _TODO_
+**Takeaway (William):** 
+RMSNorm - really surprised to see that it was slower, but then realised that the manual coding was not optimized for GPU operations.
+RoPE - having predicted learned positions would win because they could hold more complex positional relationships, it was clear why RoPE won in the end - you get positions for free from the start, and relative positioning can be more powerful when the data size is the bottleneck.
+SwiGLU - i wasn't expecting any dramatic here since GeLU and SwiGLU present very similar results in the literature.

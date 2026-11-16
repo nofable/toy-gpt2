@@ -54,3 +54,13 @@ Result: 2,000 steps, 58 s on the M5. **Val 1.66** (bigram 2.49; my estimate from
 - **Ops:** stdout redirected to a file is *buffered* (the console log lagged 20 min behind the CSV). Use `python -u` / `flush=True` for runs you'll monitor remotely.
 
 Result: **30M params** (6 layers, 6 heads, 384 dim, 256 context; 19M of it is the embedding), 5,000 steps × 8,192 tokens = 41M tokens, **101 min on the M5** at about 7k tok/s. **Best val 1.674.** The samples are coherent short stories with named characters, dialogue, and the odd logic slip ("I am not a real dragon").
+
+## Milestone 5: Experiments
+
+- **Fair comparisons need a fixed harness:** the same 1M val tokens, non-overlapping windows, for every model. Random-batch evals moved by up to 0.008, which would have hidden the RMSNorm result entirely.
+- **Model size (fixed 12.3M tokens):** loss falls roughly linearly in log(params) but with shrinking returns. The 30M model was data-starved (1.2 tokens/param vs Chinchilla's ~20). 3.3× more tokens gained 0.41; 3.4× more params gained 0.17.
+- **Post-LN beat pre-LN by 0.05** at 6 layers. It started slower, overtook by step 500. Pre-LN's advantage is *stability at depth*, not final quality at small depth.
+- **RoPE was the biggest single win (−0.10)**, more than tripling model size. Relative position is built in (an *inductive bias*), so the model doesn't spend scarce data learning 256 position vectors.
+- **RMSNorm: same loss, but slower** (6.8k vs 7.2k tok/s). A hand-written norm is several memory-bound elementwise ops; `nn.LayerNorm` is one fused kernel. Less arithmetic ≠ faster.
+- **SwiGLU: small gain (−0.007)**, consistent with the literature.
+- **My predictions:** 3/5 right on loss. The two misses (post-LN, RoPE) were the most instructive results.

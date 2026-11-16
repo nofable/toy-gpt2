@@ -1,16 +1,18 @@
 # Experiments (Milestone 5)
 
 All runs: TinyStories, GPT-2 tokenizer, 1,500 steps × 8,192 tokens = **12.3M tokens**, same seed, data order,
-and LR schedule (warmup 100 → cosine to 1e-4). Baseline = GPT-2 style, 6 layers × 384 wide (30M params), val **2.080**.
+and LR schedule (warmup 100 → cosine to 1e-4). Baseline = GPT-2 style, 6 layers × 384 wide (30M params).
+Final numbers are from the fixed eval harness (`python -m toy_gpt2.eval`: the same 1M val tokens for every model),
+so differences of ~0.005 or more are real rather than sampling noise. Baseline: **2.073** (0.729 bits/byte).
 Predictions were written down **before** seeing results.
 
 ## A. Model size vs loss ✅
 
-| Model | Non-emb params | Final val | Tokens / param |
-|---|---|---|---|
-| 2L × 128 | 0.40M | 2.757 | 31 |
-| 4L × 256 | 3.16M | 2.252 | 3.9 |
-| 6L × 384 | 10.65M | 2.080 | 1.2 |
+| Model | Non-emb params | Val (fixed slice) | Bits/byte | Tokens / param |
+|---|---|---|---|---|
+| 2L × 128 | 0.40M | 2.749 | 0.967 | 31 |
+| 4L × 256 | 3.16M | 2.244 | 0.789 | 3.9 |
+| 6L × 384 | 10.65M | 2.073 | 0.729 | 1.2 |
 
 ![model size](assets/model_size.png)
 
@@ -18,17 +20,22 @@ Predictions were written down **before** seeing results.
 (~0.56 per 10× → ~0.32 per 10×). The big model is data-starved (1.2 tokens/param vs Chinchilla's ~20).
 Same model with 3.3× more tokens (the 41M-token run) reached **1.674**, a gain of 0.41, versus 0.17 from 3.4× more params.
 
-## B. Pre-LN vs post-LN ⏳
+## B. Pre-LN vs post-LN ✅
 
 **Prediction:** no meaningful change at 6 layers. Pre-LN's clean residual path (guards against vanishing gradients)
 should matter more as depth grows.
 
-| Variant | Final val | Δ vs baseline | tok/s |
+| Variant | Val (fixed slice) | Δ vs baseline | Median tok/s |
 |---|---|---|---|
-| pre-LN (baseline) | 2.080 | — | |
-| post-LN | | | |
+| pre-LN (baseline) | 2.073 | — | 7.2k |
+| post-LN | **2.023** | **−0.050** | 7.6k |
 
-## C. Modern upgrades, cumulative ⏳
+**Result vs prediction:** ❌ predicted no change; post-LN was **better** by 0.05. It started slower (3.27 vs 3.17 at step 250)
+and overtook by step 500.
+
+**Takeaway (William):** _TODO_
+
+## C. Modern upgrades, cumulative ✅
 
 **Predictions:**
 - **RMSNorm:** no change in loss; maybe slightly faster.
@@ -36,9 +43,14 @@ should matter more as depth grows.
   in RoPE's favour at larger scale / longer context. Maybe slightly faster (no position table).
 - **SwiGLU:** a very small improvement (gating gives finer control than GELU).
 
-| Variant | Final val | Δ vs previous | tok/s |
-|---|---|---|---|
-| GPT-2 baseline | 2.080 | — | |
-| + RMSNorm | | | |
-| + RoPE | | | |
-| + SwiGLU | | | |
+| Variant | Val (fixed slice) | Δ vs previous | Median tok/s | Prediction |
+|---|---|---|---|---|
+| GPT-2 baseline | 2.073 | — | 7.2k | |
+| + RMSNorm | 2.071 | −0.002 | 6.8k | ✅ no loss change · ❌ slower, not faster (unfused ops) |
+| + RoPE | **1.968** | **−0.103** | 5.8k | ❌ predicted learned positions would win |
+| + SwiGLU | 1.961 | −0.007 | 6.8k | ✅ very small gain |
+
+![architecture](assets/architecture.png)
+*(Note: the y-axis starts at 1.9 to make the differences visible.)*
+
+**Takeaway (William):** _TODO_

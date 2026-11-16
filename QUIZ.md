@@ -173,11 +173,13 @@ Weight decay pulls towards **0**. That's a sensible default for weight matrices 
 **No.** Text has inherent uncertainty: after "there was a little", the next word could be girl, boy or dog. A model that knows the *true* probabilities still has loss = **the entropy of the text** (the Shannon limit), and that's well above 0. Loss 0 means 100% certainty on every token, which happens only by **memorisation** or a **leak** (no causal mask, val data in the training set). Scaling laws: loss = **E** (irreducible) + terms that shrink with more parameters and data.
 </details>
 
-### 17. 🔁 Why was RMSNorm slower than LayerNorm despite less arithmetic?
+### 17. 🔁 Why can a hand-written norm be slower than `nn.LayerNorm` despite less arithmetic? And why did fusing it barely help *our* training speed?
 
 <details><summary>Answer</summary>
 
 Elementwise GPU operations are **memory-bound**: each one reads the whole tensor from memory, does a tiny bit of maths, and writes it all back. Hand-written RMSNorm = ~6 separate operations = ~6 round trips. `nn.LayerNorm` = one **fused kernel** = one read, one write. Moving data costs more than the arithmetic. Fixes: kernel fusion (`F.rms_norm`, `torch.compile`). Flash Attention is the same idea applied to attention.
+
+**But in our runs it didn't matter.** The "RMSNorm was slower" result was laptop noise (the Mac slowed mid-run), and switching to fused `F.rms_norm` gained ~2%, within noise. **Amdahl's law:** if norms are a small fraction of the step, even a 10× faster norm saves only that fraction. Speed up what dominates (matmuls, attention). And measure speed with controlled, back-to-back benchmarks, not the median of one long run.
 </details>
 
 ### 18. 🔁 Post-LN won at 6 layers. So why does every large model use pre-LN?

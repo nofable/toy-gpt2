@@ -61,6 +61,6 @@ Result: **30M params** (6 layers, 6 heads, 384 dim, 256 context; 19M of it is th
 - **Model size (fixed 12.3M tokens):** loss falls roughly linearly in log(params) but with shrinking returns. The 30M model was data-starved (1.2 tokens/param vs Chinchilla's ~20). 3.3× more tokens gained 0.41; 3.4× more params gained 0.17.
 - **Post-LN beat pre-LN by 0.05** at 6 layers. It started slower, overtook by step 500. Pre-LN's advantage is *stability at depth*, not final quality at small depth.
 - **RoPE was the biggest single win (−0.10)**, more than tripling model size. Relative position is built in (an *inductive bias*), so the model doesn't spend scarce data learning 256 position vectors.
-- **RMSNorm: same loss, but slower** (6.8k vs 7.2k tok/s). A hand-written norm is several memory-bound elementwise ops; `nn.LayerNorm` is one fused kernel. Less arithmetic ≠ faster.
+- **RMSNorm: same loss, same speed.** It first looked slower (median 6.8k vs 7.2k tok/s), but the log showed the Mac slowing mid-run (8.3k → 5.3k). Fused `F.rms_norm` gained ~2%, within noise: norms are a small slice of each step (**Amdahl's law**). Lesson: benchmark speed back-to-back, never trust the median of one long laptop run.
 - **SwiGLU: small gain (−0.007)**, consistent with the literature.
 - **My predictions:** 3/5 right on loss. The two misses (post-LN, RoPE) were the most instructive results.

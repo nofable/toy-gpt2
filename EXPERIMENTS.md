@@ -48,14 +48,20 @@ However, with the small size of our model, post-LN outperformed. pre-LN is bette
 | Variant | Val (fixed slice) | Δ vs previous | Median tok/s | Prediction |
 |---|---|---|---|---|
 | GPT-2 baseline | 2.073 | — | 7.2k | |
-| + RMSNorm | 2.071 | −0.002 | 6.8k | ✅ no loss change · ❌ slower, not faster (unfused ops) |
+| + RMSNorm | 2.071 | −0.002 | 6.8k* | ✅ no loss change · speed: no real difference (see note) |
 | + RoPE | **1.968** | **−0.103** | 5.8k | ❌ predicted learned positions would win |
 | + SwiGLU | 1.961 | −0.007 | 6.8k | ✅ very small gain |
 
 ![architecture](assets/architecture.png)
 *(Note: the y-axis starts at 1.9 to make the differences visible.)*
 
+**Note on speed (corrected in Milestone 6).** Throughput medians from single long laptop runs are unreliable.
+*The RMSNorm run logged 8.3k → 7.9k → 7.2k → 6.7k → 5.3k → 6.2k tok/s: faster than LayerNorm early on, then the
+Mac slowed down mid-run, which dragged the median to 6.8k. I first blamed unfused ops; the data doesn't support that.
+A later back-to-back check (steps 250–750) gave LayerNorm 6.8–7.4k, hand-written RMSNorm 7.2–8.3k,
+fused `F.rms_norm` 7.8–8.2k: all within noise. Treat every tok/s column above as ±15%.
+
 **Takeaway (William):** 
-RMSNorm - really surprised to see that it was slower, but then realised that the manual coding was not optimized for GPU operations.
+RMSNorm - no change in loss, as expected. It first looked slower, but that turned out to be the laptop slowing down mid-run rather than the norm itself; swapping in the fused `F.rms_norm` made no measurable difference either, because the norms are only a small slice of each training step (Amdahl's law).
 RoPE - having predicted learned positions would win because they could hold more complex positional relationships, it was clear why RoPE won in the end - you get positions for free from the start, and relative positioning can be more powerful when the data size is the bottleneck.
 SwiGLU - i wasn't expecting any dramatic here since GeLU and SwiGLU present very similar results in the literature.

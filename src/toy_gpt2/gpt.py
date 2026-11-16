@@ -45,9 +45,7 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))  # learned per-channel scale, starts at 1
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO R: divide x by the root-mean-square of its last dimension, then scale by self.weight.
-        #         Add self.eps inside the square root. Why is it needed?
-        return x * self.weight / torch.sqrt(torch.mean(x ** 2 , dim=-1, keepdim=True) + self.eps)
+        return F.rms_norm(x, self.weight.shape, weight=self.weight, eps=self.eps)
 
 
 def make_norm(cfg: GPTConfig) -> nn.Module:

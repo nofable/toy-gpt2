@@ -161,3 +161,21 @@ Weight decay pulls towards **0**. That's a sensible default for weight matrices 
 - Call `module(x)`, not `.forward(x)` (that skips hooks).
 - `ModuleList` has no forward. Loop over it.
 </details>
+
+---
+
+## Compression and hardware
+
+### 16. 🔁 Does a perfect model have a loss of 0?
+
+<details><summary>Answer</summary>
+
+**No.** Text has inherent uncertainty: after "there was a little", the next word could be girl, boy or dog. A model that knows the *true* probabilities still has loss = **the entropy of the text** (the Shannon limit), and that's well above 0. Loss 0 means 100% certainty on every token, which happens only by **memorisation** or a **leak** (no causal mask, val data in the training set). Scaling laws: loss = **E** (irreducible) + terms that shrink with more parameters and data.
+</details>
+
+### 17. 🔁 Why was RMSNorm slower than LayerNorm despite less arithmetic?
+
+<details><summary>Answer</summary>
+
+Elementwise GPU operations are **memory-bound**: each one reads the whole tensor from memory, does a tiny bit of maths, and writes it all back. Hand-written RMSNorm = ~6 separate operations = ~6 round trips. `nn.LayerNorm` = one **fused kernel** = one read, one write. Moving data costs more than the arithmetic. Fixes: kernel fusion (`F.rms_norm`, `torch.compile`). Flash Attention is the same idea applied to attention.
+</details>

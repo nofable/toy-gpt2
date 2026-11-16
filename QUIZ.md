@@ -73,6 +73,14 @@ The embedding turns *the current* token into a vector, and the output predicts *
 Both use **one shared space of token vectors**. Input: token X → e_X. Output: logit(X) = h · e_X ("how well does the final state match X?"). The blocks' job is to move the residual stream from *current token* towards *next token*. Shapes: Embedding is (V, C), and Linear(C, V) stores (V, C), so no transpose is needed. Trade-off: it saves V×C parameters (about 30% of GPT-2) and helps rare tokens, but it adds a bias towards repeating the current token. Many large models don't tie.
 </details>
 
+### 7b. 🔁 Why can't RoPE tell positions apart in "3 3 3 3 3"?
+With learned position embeddings, a sequence of identical tokens gives different outputs at each position. With RoPE it doesn't. Why not?
+
+<details><summary>Answer</summary>
+
+RoPE only rotates **q and k**, so position changes *where attention looks* but not *what it retrieves*. With identical tokens, every **v** is identical, so any weighted average of them is the same vector, whatever the attention weights. Learned `wpe` adds position into the residual stream itself, so the vectors differ. (I found this when a test I'd written for RoPE failed. The fix was to test order instead: "dog bites man" vs "man bites dog".)
+</details>
+
 ---
 
 ## Tokenization

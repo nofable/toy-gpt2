@@ -76,8 +76,12 @@ Train on rented hardware, with regular checkpoints and logging. Have a plan for 
 *Done when:* the model is trained, its validation loss and HellaSwag score are compared with GPT-2 124M, and the GPU instance is **shut down**.
 
 ### 8. Polish and publish (≈3–4 hrs)
+**Explain-back sessions first:** walk through every file Claude wrote (`train.py`, `eval.py`, the scripts) as if to an interviewer, and explain in plain English the rationale for every part of the architecture (embeddings, attention, masking, scaling, MLP, residuals, norms, positions, weight tying, the LR schedule, AdamW, clipping).
 Write the README (results, plots, what you learned), and optionally put the weights on Hugging Face with a small demo.
 *Done when:* the repo is public and you could walk an interviewer through any file in it.
+
+## How we check code
+`uv run pytest -q` runs the test suite in `tests/`. Run it before asking for a review.
 
 ## Guardrails
 - Set a spending cap or alert with the GPU provider before renting anything.

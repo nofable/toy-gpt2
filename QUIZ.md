@@ -188,3 +188,17 @@ Elementwise GPU operations are **memory-bound**: each one reads the whole tensor
 
 Look at what gets normalised. **Pre-LN** normalises only each sub-layer's *input*; the residual stream itself is never normalised, so gradients flow straight through (I + f′) to the first layer. That makes very deep stacks train stably, even without careful warmup. **Post-LN** normalises the whole stream after every block, which constrains the representation more tightly and can give a better final loss, but the gradient has to pass through a LayerNorm at every layer, so at depth it becomes unstable early in training (needs long warmup, can diverge). At 6 layers that instability doesn't bite; at 48+ it does. Large models trade a little quality for reliability.
 </details>
+
+### 19. 🔁 Mixed precision: why keep the *weights* in fp32 if the matmuls run in bf16?
+A weight is 0.02, and this step's update is 0.0003 (later, after LR decay, 0.00003). bf16 has 7 mantissa bits:
+the next number after 1.0 is 1.0078. What happens to the update if the weight is stored in bf16?
+
+<details><summary>Answer</summary>
+
+Near 0.02, neighbouring bf16 numbers are about 0.02 × 2⁻⁷ ≈ 0.00016 apart. An update of 0.0003 gets rounded to
+roughly one or two steps (a big relative error), and an update of 0.00003 is **less than half a step, so it rounds
+to nothing: the weight never changes**. Late in training, learning silently stops. Hence **fp32 master weights +
+optimizer state**, with bf16 only for the matmul inputs (accumulated in fp32 inside the tensor cores), and
+`autocast` keeping softmax, norms and the loss in fp32. bf16 vs fp16: same 16 bits, but bf16 keeps fp32's 8-bit
+exponent (range), so no overflow past 65,504 or underflow of small gradients, and no loss scaling needed.
+</details>

@@ -44,6 +44,10 @@ def test_lr_schedule():
     assert math.isclose(get_lr(1000, **kw), 1e-4)
     assert math.isclose(get_lr(5000, **kw), 1e-4)
 
+def test_lr_schedule_warmup_equals_max():
+    kw = dict(max_lr=1e-3, min_lr=1e-4, warmup_iters=100, max_iters=100)
+    assert math.isclose(get_lr(100, **kw), 1e-4)
+    
 
 def test_bits_per_byte():
     # 1 bit per token (ln 2 nats), 1 byte per token -> 1 bit per byte

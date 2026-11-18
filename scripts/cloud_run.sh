@@ -18,7 +18,7 @@ df -h . | tail -1
 uv run python scripts/download_finewebedu.py --shards "$SHARDS"
 mkdir -p "runs/$NAME"
 if [ -f "runs/$NAME/ckpt.pt" ]; then
-  set -- --resume
+  set -- --name "$NAME" --resume
 else
   set -- --name "$NAME" --max_hours "$HOURS" "$@"
 fi

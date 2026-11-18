@@ -64,6 +64,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--log_interval", type=int, default=10)
     p.add_argument("--hellaswag", action=argparse.BooleanOptionalAction, default=None, help="default: on for CUDA")
     p.add_argument("--seed", type=int, default=1337)
+    p.add_argument("--stop_after", type=int, default=None, help="testing: save and exit after this step")
     args = p.parse_args(argv)
     if args.min_lr is None:
         args.min_lr = args.max_lr / 10
@@ -100,6 +101,12 @@ def val_loss(model, loader: ShardLoader, n_batches: int, autocast) -> float:
     return total / n_batches
 
 
+def fit_max_iters(step: int, max_iters: int, warmup_iters: int, sec_per_step: float, remaining_s: float,
+                  overhead: float = 1.02) -> int:
+    fit = step + int(remaining_s / (sec_per_step * overhead))
+    return min(max_iters, max(fit, warmup_iters + 1))
+
+
 def save_checkpoint(path: Path, state: dict) -> None:
     tmp = path.with_suffix(".tmp")
     torch.save(state, tmp)
@@ -113,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False) if args.resume else None
     if ckpt is not None:
         resume_flag, args = True, argparse.Namespace(**ckpt["args"])
-        args.resume = resume_flag
+        args.resume, args.stop_after = resume_flag, None
     out_dir.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(args.seed)
@@ -253,11 +260,8 @@ def main(argv: list[str] | None = None) -> None:
                 calib_t0 = time.time()
             elif step == calib_from + 50:
                 sec_per_step = (time.time() - calib_t0) / 50
-                eval_overhead = 1.02
                 remaining = args.max_hours * 3600 - elapsed()
-                fit = step + int(remaining / (sec_per_step * eval_overhead))
-                if fit < max_iters:
-                    max_iters = max(fit, args.warmup_iters + 1)
+                max_iters = fit_max_iters(step + 1, max_iters, args.warmup_iters, sec_per_step, remaining)
                 calibrated = True
                 print(f"time budget {args.max_hours} h at {sec_per_step:.2f} s/step -> max_iters={max_iters} "
                       f"(~{max_iters * args.total_batch_tokens / 1e9:.2f}B tokens)", flush=True)
@@ -268,6 +272,11 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"non-finite loss/grad at step {step - 1}; keeping the previous checkpoint", flush=True)
                 sys.exit(1)
             checkpoint(step, last_val)
+        if args.stop_after is not None and step == args.stop_after:
+            checkpoint(step, last_val)
+            log_f.close()
+            steps_f.close()
+            return
         if args.max_hours is not None and elapsed() > args.max_hours * 3600 and step < max_iters:
             print(f"over the time budget at step {step}; ending the run here", flush=True)
             max_iters = step

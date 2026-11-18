@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> None:
         torch.set_float32_matmul_precision("high")
         gpu = torch.cuda.get_device_name()
         if args.peak_tflops is None:
-            args.peak_tflops = 756.0 if "PCIe" in gpu else 312.0 if "A100" in gpu else 989.0
+            args.peak_tflops = 312.0 if "A100" in gpu else 756.0 if "PCIe" in gpu else 989.0
         say(f"gpu={gpu} x{d.world} torch={torch.__version__} cuda={torch.version.cuda} "
             f"peak={args.peak_tflops} TFLOPS per GPU")
     elif args.peak_tflops is None:

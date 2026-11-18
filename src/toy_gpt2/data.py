@@ -35,10 +35,13 @@ def shard_paths(dataset: str, split: str) -> list[Path]:
 
 
 class ShardLoader:
-    """Reads shards in order, B*T tokens at a time, so every token is seen once per epoch."""
+    """Reads shards in order, so every token is seen once per epoch. With DDP, `world` processes read
+    interleaved B*T chunks: together they consume exactly what one process would in `world` calls."""
 
-    def __init__(self, paths: list[Path], batch_size: int, block_size: int, device: str):
+    def __init__(self, paths: list[Path], batch_size: int, block_size: int, device: str, rank: int = 0,
+                 world: int = 1):
         self.paths, self.B, self.T, self.device = paths, batch_size, block_size, device
+        self.rank, self.world = rank, world
         self.reset()
 
     def reset(self) -> None:
@@ -57,13 +60,14 @@ class ShardLoader:
 
     def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
         n = self.B * self.T
-        if self.pos + n + 1 > len(self.tokens):
+        if self.pos + n * self.world + 1 > len(self.tokens):
             self.shard = (self.shard + 1) % len(self.paths)
             self.pos = 0
             self.tokens = load_shard(self.paths[self.shard])
-        buf = torch.from_numpy(self.tokens[self.pos : self.pos + n + 1].astype(np.int64))
-        self.pos += n
+        start = self.pos + self.rank * n
+        buf = torch.from_numpy(self.tokens[start : start + n + 1].astype(np.int64))
+        self.pos += n * self.world
         x, y = buf[:-1].view(self.B, self.T), buf[1:].view(self.B, self.T)
-        if self.device == "cuda":
-            return x.pin_memory().to("cuda", non_blocking=True), y.pin_memory().to("cuda", non_blocking=True)
+        if self.device.startswith("cuda"):
+            return x.pin_memory().to(self.device, non_blocking=True), y.pin_memory().to(self.device, non_blocking=True)
         return x.to(self.device), y.to(self.device)

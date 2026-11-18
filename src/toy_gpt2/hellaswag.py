@@ -46,7 +46,7 @@ def render(example: dict, enc) -> tuple[torch.Tensor, torch.Tensor, int]:
 @torch.no_grad()
 def evaluate_model(model: GPT, device: str, out_path: Path | None = None, limit: int | None = None) -> float:
     enc = tiktoken.get_encoding("gpt2")
-    autocast = torch.autocast("cuda", dtype=torch.bfloat16) if device == "cuda" else nullcontext()
+    autocast = torch.autocast("cuda", dtype=torch.bfloat16) if device.startswith("cuda") else nullcontext()
     examples = load_examples()[:limit]
     model.eval()
     correct = 0

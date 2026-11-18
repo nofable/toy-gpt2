@@ -1,5 +1,6 @@
 import csv
 import math
+import os
 
 import numpy as np
 import torch
@@ -90,12 +91,7 @@ def run_train(tmp_path, monkeypatch, *extra):
     rng = np.random.default_rng(0)
     for split in ("train", "val"):
         write_shard(tmp_path / f"data/tinystories/{split}.bin", rng.integers(0, 50257, 20_000), header=False)
-    train.main([
-        "--name", "t", "--data", "tinystories", "--n_layer", "2", "--n_head", "2", "--n_embd", "32",
-        "--block_size", "16", "--batch_size", "4", "--total_batch_tokens", "128", "--warmup_iters", "2",
-        "--eval_interval", "4", "--eval_batches", "2", "--log_interval", "1", "--ckpt_interval", "3",
-        "--no-compile", "--no-hellaswag", *extra,
-    ])
+    train.main([*TRAIN_ARGS, *extra])
     return tmp_path / "runs/t"
 
 
@@ -145,3 +141,11 @@ def test_bf16_autocast_forward_backward():
     assert logits.dtype == torch.bfloat16 and loss.dtype == torch.float32 and math.isfinite(loss.item())
     loss.backward()
     assert all(p.grad is not None and p.grad.dtype == torch.float32 for p in m.parameters())
+
+
+TRAIN_ARGS = [
+    "--name", "t", "--data", "tinystories", "--n_layer", "2", "--n_head", "2", "--n_embd", "32", "--block_size", "16",
+    "--batch_size", "4", "--total_batch_tokens", "128", "--warmup_iters", "2", "--eval_interval", "4",
+    "--eval_batches", "2", "--log_interval", "1", "--ckpt_interval", "3", "--no-compile", "--no-hellaswag",
+]
+

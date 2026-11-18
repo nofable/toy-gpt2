@@ -11,13 +11,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-RUNS = {"size_128": (2, 128), "size_256": (4, 256), "size_384": (6, 384)}  # name: (n_layer, n_embd)
+RUNS = {"size_128": (2, 128), "size_256": (4, 256), "size_384": (6, 384)}
 VOCAB, BLOCK = 50257, 256
 
 
 def non_embedding_params(n_layer: int, C: int) -> int:
     per_block = 2 * (2 * C) + (C * 3 * C + 3 * C) + (C * C + C) + (C * 4 * C + 4 * C) + (4 * C * C + C)
-    return n_layer * per_block + 2 * C  # + final LayerNorm
+    return n_layer * per_block + 2 * C
 
 
 def main() -> None:

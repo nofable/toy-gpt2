@@ -1,10 +1,7 @@
-"""Eval harness: score checkpoints on the SAME fixed slice of TinyStories val, every time.
+"""Fixed eval harness: score checkpoints on the same first ~1M tokens of a val split, every time.
 
-Usage:  uv run python -m toy_gpt2.eval size_128 size_256 size_384 arch_rmsnorm ...
-Writes runs/<name>/eval.json and prints a comparison table.
-
-Unlike estimate_loss (random batches -> noisy), this uses the first `--tokens` tokens of val.bin,
-cut into non-overlapping windows, so every model sees exactly the same predictions to make.
+  uv run python -m toy_gpt2.eval size_128 size_256 size_384 arch_rmsnorm
+Writes runs/<name>/eval.json (val loss and bits per byte).
 """
 
 import argparse
@@ -18,27 +15,23 @@ import tiktoken
 import torch
 import torch.nn.functional as F
 
+from toy_gpt2.data import load_shard, shard_paths
 from toy_gpt2.gpt import get_device
 from toy_gpt2.sample import load_model
 
 
 def bits_per_byte(mean_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
-    """Convert mean cross-entropy (nats per token) into bits per byte of text."""
-    # TODO BPB: two steps - nats -> bits, then per-token -> per-byte.
-    total_nats = mean_loss_nats * n_tokens
-    total_bits = total_nats / math.log(2)
-    return total_bits / n_bytes
+    return mean_loss_nats * n_tokens / math.log(2) / n_bytes
 
 
 @torch.no_grad()
-def evaluate(run: str, n_eval_tokens: int, batch_size: int, device: str) -> dict:
+def evaluate(run: str, n_eval_tokens: int, batch_size: int, device: str, dataset: str = "tinystories") -> dict:
     model, ckpt = load_model(run, device)
     T = model.cfg.block_size
-    data = np.memmap("data/tinystories/val.bin", dtype=np.uint16, mode="r")
+    data = load_shard(shard_paths(dataset, "val")[0])
     n_windows = n_eval_tokens // T
-    starts = np.arange(n_windows) * T  # non-overlapping, deterministic
+    starts = np.arange(n_windows) * T
 
-    # Bytes of text we predict = the bytes of every *target* token.
     enc = tiktoken.get_encoding("gpt2")
     token_bytes = np.array([len(enc.decode_single_token_bytes(i)) for i in range(enc.n_vocab)])
 
@@ -50,6 +43,7 @@ def evaluate(run: str, n_eval_tokens: int, batch_size: int, device: str) -> dict
         y_np = np.stack([data[i + 1 : i + 1 + T] for i in s]).astype(np.int64)
         y = torch.from_numpy(y_np).to(device)
         logits, _ = model(x)
+        logits = logits[..., : enc.n_vocab]
         total_nats += F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1), reduction="sum").item()
         n_tokens += y.numel()
         n_bytes += int(token_bytes[y_np].sum())
@@ -72,14 +66,15 @@ def evaluate(run: str, n_eval_tokens: int, batch_size: int, device: str) -> dict
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("runs", nargs="+")
-    p.add_argument("--tokens", type=int, default=1 << 20, help="eval tokens (default ~1M)")
+    p.add_argument("--tokens", type=int, default=1 << 20)
+    p.add_argument("--data", choices=["tinystories", "finewebedu"], default="tinystories")
     p.add_argument("--batch_size", type=int, default=32)
     args = p.parse_args()
 
     device = get_device()
     print(f"{'run':28s} {'params':>8s} {'val loss':>9s} {'bits/byte':>10s}")
     for run in args.runs:
-        r = evaluate(run, args.tokens, args.batch_size, device)
+        r = evaluate(run, args.tokens, args.batch_size, device, args.data)
         print(f"{r['run']:28s} {r['params_M']:7.2f}M {r['val_loss']:9.4f} {r['bits_per_byte']:10.4f}")
 
 

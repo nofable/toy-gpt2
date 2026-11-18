@@ -163,9 +163,9 @@ Roughly, at T = 1024 for GPT-2 small:
 
 | Speed-up | Which part does it speed up? | How big is that part? | My rank (1 = biggest) |
 |---|---|---|---|
-| bf16 mixed precision | ____ | ____ | ____ |
-| Flash Attention | ____ | ____ | ____ |
-| `torch.compile` | ____ | ____ | ____ |
+| bf16 mixed precision | matrix multiplication | everything | 1 |
+| Flash Attention | attention heads | 15% | 3 |
+| `torch.compile` | everything | 100% | 2 |
 
 <details><summary>Hint</summary>
 
@@ -178,5 +178,5 @@ Step 6 already tells you what bf16 is worth on its own. Can the other two come a
 
 | | |
 |---|---|
-| Tokens we can afford in ~6 hours (if step 4 says we fall short) | ____ B |
-| One sentence: is the plan realistic, and what has to go right? | ____ |
+| Tokens we can afford in ~6 hours (if step 4 says we fall short) | ~10.8 B |
+| One sentence: is the plan realistic, and what has to go right? | yes, as long as we use the H100 and bf16 |

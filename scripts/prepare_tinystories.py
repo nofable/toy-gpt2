@@ -42,12 +42,11 @@ def download(name: str) -> Path:
 
 
 def iter_story_batches(path: Path, batch_bytes: int = 64 << 20):
-    """Yield lists of stories, reading the file in chunks (never all in memory)."""
     rest = ""
     with open(path, encoding="utf-8") as f:
         while block := f.read(batch_bytes):
             parts = (rest + block).split(SEP)
-            rest = parts.pop()  # last piece may be an incomplete story
+            rest = parts.pop()
             yield [s.strip() for s in parts if s.strip()]
     if rest.strip():
         yield [rest.strip()]
@@ -64,7 +63,7 @@ def tokenize(src: Path, dst: Path) -> dict:
             for ids in enc.encode_ordinary_batch(stories, num_threads=8):
                 out.extend(ids)
                 out.append(eot)
-            np.asarray(out, dtype=np.uint16).tofile(f)  # GPT-2 vocab 50,257 < 65,536 fits in uint16
+            np.asarray(out, dtype=np.uint16).tofile(f)
             n_tokens += len(out)
             n_stories += len(stories)
             print(f"  {dst.name}: {n_stories:,} stories, {n_tokens:,} tokens ({time.time() - t0:.0f}s)", flush=True)
@@ -74,7 +73,7 @@ def tokenize(src: Path, dst: Path) -> dict:
 def main() -> None:
     RAW.mkdir(parents=True, exist_ok=True)
     meta = {}
-    for split in ("val", "train"):  # val first: small, so problems show up fast
+    for split in ("val", "train"):
         src = download(FILES[split])
         print(f"[tokenize] {split}")
         meta[split] = tokenize(src, OUT / f"{split}.bin")

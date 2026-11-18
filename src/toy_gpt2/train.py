@@ -57,7 +57,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--grad_clip", type=float, default=1.0)
 
     p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=None, help="default: on for CUDA")
-    p.add_argument("--peak_tflops", type=float, default=989.0, help="for MFU; H100 SXM bf16 = 989")
+    p.add_argument("--peak_tflops", type=float, default=None, help="bf16 peak for MFU; default from GPU name")
     p.add_argument("--eval_interval", type=int, default=500)
     p.add_argument("--eval_batches", type=int, default=20)
     p.add_argument("--ckpt_interval", type=int, default=1000)
@@ -118,10 +118,18 @@ def main(argv: list[str] | None = None) -> None:
 
     torch.manual_seed(args.seed)
     device = get_device()
+    if args.max_hours is not None and device != "cuda":
+        sys.exit(f"--max_hours is for the paid GPU run, but the device is {device}: is CUDA working?")
     use_compile = device == "cuda" if args.compile is None else args.compile
     run_hellaswag = device == "cuda" if args.hellaswag is None else args.hellaswag
     if device == "cuda":
         torch.set_float32_matmul_precision("high")
+        gpu = torch.cuda.get_device_name()
+        if args.peak_tflops is None:
+            args.peak_tflops = 756.0 if "PCIe" in gpu else 312.0 if "A100" in gpu else 989.0
+        print(f"gpu={gpu} torch={torch.__version__} cuda={torch.version.cuda} peak={args.peak_tflops} TFLOPS")
+    elif args.peak_tflops is None:
+        args.peak_tflops = 989.0
     autocast = torch.autocast("cuda", dtype=torch.bfloat16) if device == "cuda" else nullcontext()
 
     tokens_per_micro = args.batch_size * args.block_size
@@ -233,8 +241,9 @@ def main(argv: list[str] | None = None) -> None:
             tok_s = steps_done * args.total_batch_tokens / (now - t_last)
             t_last = now
             mfu = fpt * tok_s / (args.peak_tflops * 1e12)
+            mem = f" | mem {torch.cuda.max_memory_allocated() / 1e9:.1f} GB" if device == "cuda" else ""
             print(f"step {step:6d} | loss {loss_val:.4f} | lr {lr:.2e} | norm {float(grad_norm):.2f} | "
-                  f"{tok_s / 1e3:.0f}k tok/s | mfu {mfu:.1%}", flush=True)
+                  f"{tok_s / 1e3:.0f}k tok/s | mfu {mfu:.1%}{mem}", flush=True)
             steps_log.writerow([step, round(loss_val, 4), lr, round(float(grad_norm), 3), round(tok_s),
                                 round(mfu, 4), round(elapsed())])
             steps_f.flush()
@@ -244,7 +253,7 @@ def main(argv: list[str] | None = None) -> None:
                 calib_t0 = time.time()
             elif step == calib_from + 50:
                 sec_per_step = (time.time() - calib_t0) / 50
-                eval_overhead = 1.05
+                eval_overhead = 1.02
                 remaining = args.max_hours * 3600 - elapsed()
                 fit = step + int(remaining / (sec_per_step * eval_overhead))
                 if fit < max_iters:
@@ -255,11 +264,13 @@ def main(argv: list[str] | None = None) -> None:
 
         step += 1
         if step % args.ckpt_interval == 0:
+            if not (math.isfinite(loss_sum.item()) and math.isfinite(float(grad_norm))):
+                print(f"non-finite loss/grad at step {step - 1}; keeping the previous checkpoint", flush=True)
+                sys.exit(1)
             checkpoint(step, last_val)
-        if args.max_hours is not None and elapsed() > args.max_hours * 3600 * 1.02:
-            print("over the time budget; saving and stopping", flush=True)
-            checkpoint(step, last_val)
-            sys.exit(0)
+        if args.max_hours is not None and elapsed() > args.max_hours * 3600 and step < max_iters:
+            print(f"over the time budget at step {step}; ending the run here", flush=True)
+            max_iters = step
 
     checkpoint(max_iters, last_val)
     log_f.close()

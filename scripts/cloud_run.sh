@@ -3,9 +3,14 @@
 set -euo pipefail
 HOURS=${1:?hours}
 SHARDS=${2:-99}
+export UV_PYTHON_PREFERENCE=only-managed
+command -v gcc >/dev/null || { apt-get update -qq && apt-get install -y -qq build-essential; }
 command -v uv >/dev/null || { curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH="$HOME/.local/bin:$PATH"; }
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+uv python install 3.12
 uv sync
-nvidia-smi --query-gpu=name,memory.total --format=csv
+uv run python -c "import torch; assert torch.cuda.is_available(), f'CUDA not usable: torch built for CUDA {torch.version.cuda} needs NVIDIA driver >= 580'; print(torch.cuda.get_device_name(), 'cuda', torch.version.cuda)"
+df -h . | tail -1
 uv run python scripts/download_finewebedu.py --shards "$SHARDS"
 mkdir -p runs/gpt2
 RESUME=""

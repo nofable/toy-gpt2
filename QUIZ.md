@@ -202,3 +202,50 @@ optimizer state**, with bf16 only for the matmul inputs (accumulated in fp32 ins
 `autocast` keeping softmax, norms and the loss in fp32. bf16 vs fp16: same 16 bits, but bf16 keeps fp32's 8-bit
 exponent (range), so no overflow past 65,504 or underflow of small gradients, and no loss scaling needed.
 </details>
+
+---
+
+## Scaling up (Milestone 6)
+
+### 20. 🔁 Rank bf16, `torch.compile` and Flash Attention by speed-up. Why is "share of FLOPs" the wrong ruler?
+
+<details><summary>Answer</summary>
+
+**bf16 ≫ `torch.compile` > Flash Attention.** bf16 moves *every* matmul (≈100% of FLOPs) onto the tensor cores: 67 → 989 TFLOPS on an H100, about 15×. `torch.compile` does **not** touch the matmuls. It fuses the **elementwise glue** (norms, SiLU, residual adds, RoPE), which is ~0% of FLOPs but a big share of *time*, because each unfused op is a full round trip to HBM. Flash Attention fuses the T×T attention so the score matrix never leaves SRAM. Rank by **share of time**, not share of FLOPs. The gap between the two is exactly what MFU measures.
+</details>
+
+### 21. 🔁 Does a tokenizer with more bytes per token make each token cost more compute?
+
+<details><summary>Answer</summary>
+
+**No.** Inside the model every token is one vector of size C, so FLOPs per token = 6N (+ attention) regardless of what text it stands for. Bytes per token decide how much **text** a token budget covers (10B GPT-2 tokens ≈ 40 GB of English), and they matter when *comparing losses* (bits per byte), not for compute.
+</details>
+
+### 22. 🔁 `F.rms_norm(x, normalized_shape, ...)` with x of shape (B, T, C): what goes in `normalized_shape`, and what goes wrong with `x.shape`?
+
+<details><summary>Answer</summary>
+
+`normalized_shape` is a **shape** (not dimension numbers) matching the tensor's **last** dims; each group of that shape gets one RMS. You want one RMS per position vector → `(C,)`, i.e. `self.weight.shape`. With `x.shape` the whole batch is one group: positions influence each other (leaks the future past the causal mask), results change with batch size or sequence length, and `weight` (shape C) doesn't match.
+</details>
+
+### 23. 🔁 The estimate says 10B tokens take 6.0 h and the budget is 6 h. Why is that a bad plan, and what does the code do instead?
+
+<details><summary>Answer</summary>
+
+Zero margin on top of two guesses: **MFU** (30% instead of 40% → 8 h) and the extra **~15% attention FLOPs** that 6N leaves out. Plus compile time, evals, checkpoint saves and downloads. So the run is sized by **time**: `--max_hours` measures real s/step after ~70 steps and shrinks `max_iters` so the cosine schedule still finishes inside the budget. Anything above Chinchilla (~2.5B tokens) is still a well-trained model.
+</details>
+
+### 24. 🔁 Gradient accumulation: we want 524,288 tokens per step but only 65,536 fit. What exactly does the loop do, and why divide the loss?
+
+<details><summary>Answer</summary>
+
+Run 8 micro-batches, calling `backward()` on each **without** `zero_grad` in between: gradients **add up** in `.grad`. Each micro-batch loss is a *mean* over its tokens, so summing 8 of them gives 8× the gradient of the big-batch mean. Dividing each loss by 8 makes the sum equal the mean over all 524,288 tokens, i.e. mathematically the same step as one big batch. Then clip, `opt.step()`, `zero_grad`.
+</details>
+
+### 25. 🔁 Two small GPT-2 tricks: why pad the vocab 50,257 → 50,304, and why init `proj`/`down` with std 0.02/√(2·layers)?
+
+<details><summary>Answer</summary>
+
+**Padding:** GPU matmul kernels work in tiles (multiples of 64/128). An awkward size like 50,257 forces slow edge handling on the biggest matmul in the model; 50,304 = 64 × 786 fits cleanly. A few % faster for free. The 47 extra tokens never appear in the data, so their logits are just pushed down (and `generate` masks them).
+**Scaled init:** each block **adds** two outputs (attention, MLP) into the residual stream, so 12 layers add 24 random contributions and the variance grows with depth. Shrinking the init of the layers that write into the stream by 1/√(2·layers) keeps the stream's scale roughly constant at the start of training.
+</details>

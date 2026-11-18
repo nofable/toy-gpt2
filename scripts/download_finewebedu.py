@@ -7,23 +7,32 @@
 import argparse
 import time
 import urllib.request
+
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = "https://huggingface.co/datasets/kjj0/finewebedu10B-gpt2/resolve/main/"
 OUT = Path("data/finewebedu")
-SHARD_BYTES = 200_001_024
+HEADER_BYTES = 1024
+
+
+def complete(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size < HEADER_BYTES:
+        return False
+    magic, _, n_tokens = np.fromfile(path, dtype=np.int32, count=3)
+    return magic == 20240520 and path.stat().st_size == HEADER_BYTES + 2 * n_tokens
 
 
 def fetch(name: str) -> str:
     dest = OUT / name
-    if dest.exists() and dest.stat().st_size == SHARD_BYTES:
+    if complete(dest):
         return f"[skip] {name}"
     tmp = dest.with_suffix(".part")
     for attempt in range(5):
         try:
             urllib.request.urlretrieve(REPO + name, tmp)
-            assert tmp.stat().st_size == SHARD_BYTES, f"{name}: got {tmp.stat().st_size} bytes"
+            assert complete(tmp), f"{name}: incomplete ({tmp.stat().st_size} bytes)"
             tmp.rename(dest)
             return f"[done] {name}"
         except Exception as e:

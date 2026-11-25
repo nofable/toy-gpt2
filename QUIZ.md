@@ -249,3 +249,11 @@ Run 8 micro-batches, calling `backward()` on each **without** `zero_grad` in bet
 **Padding:** GPU matmul kernels work in tiles (multiples of 64/128). An awkward size like 50,257 forces slow edge handling on the biggest matmul in the model; 50,304 = 64 × 786 fits cleanly. A few % faster for free. The 47 extra tokens never appear in the data, so their logits are just pushed down (and `generate` masks them).
 **Scaled init:** each block **adds** two outputs (attention, MLP) into the residual stream, so 12 layers add 24 random contributions and the variance grows with depth. Shrinking the init of the layers that write into the stream by 1/√(2·layers) keeps the stream's scale roughly constant at the start of training.
 </details>
+
+### 26. 🔁 Delete the `/ grad_accum` (so gradients are 8× too big). What happens with AdamW? With plain SGD?
+
+<details><summary>Answer</summary>
+
+**AdamW: almost nothing.** The update is ≈ `m / √v`; scale every gradient by 8 and m grows 8×, √v grows 8×, they cancel. Adam is (nearly) scale-invariant: step size comes from the LR, not the gradient's magnitude. Side effects: grad norm reads ~1.8 so **clipping fires every step** (no longer a spike detector), and the logged loss is 8× too high.
+**SGD:** the step is `lr × grad`, so 8× gradient = 8× step, effectively an 8× learning rate, likely divergence.
+</details>

@@ -257,3 +257,24 @@ Run 8 micro-batches, calling `backward()` on each **without** `zero_grad` in bet
 **AdamW: almost nothing.** The update is ≈ `m / √v`; scale every gradient by 8 and m grows 8×, √v grows 8×, they cancel. Adam is (nearly) scale-invariant: step size comes from the LR, not the gradient's magnitude. Side effects: grad norm reads ~1.8 so **clipping fires every step** (no longer a spike detector), and the logged loss is 8× too high.
 **SGD:** the step is `lr × grad`, so 8× gradient = 8× step, effectively an 8× learning rate, likely divergence.
 </details>
+
+### 27. 🔁 What does the MLP do that attention can't, and how does SwiGLU differ from a GELU MLP?
+
+<details><summary>Answer</summary>
+
+Attention **moves** information *between* positions; the MLP **processes** it *at each position* (expand, nonlinearity, project back). It holds ~⅔ of a block's params. SwiGLU is a **gate**: `down(silu(gate(x)) * up(x))`. Two parallel projections, one through SiLU, multiplied elementwise, so each hidden unit learns how much to let through. Three matrices instead of two, so hidden 2,048 instead of 3,072 keeps the param count equal.
+</details>
+
+### 28. 🔁 Why do residual connections let deep networks train? Answer in terms of gradients.
+
+<details><summary>Answer</summary>
+
+d(x + f(x))/dx = I + f'(x): the identity term is a **gradient highway**, so the gradient reaches layer 1 undiminished through 24 sublayers instead of being multiplied by 24 Jacobians that can shrink or explode it. At init each block ≈ identity and learns a small *correction*. Pre-LN keeps this highway clean by putting the norm inside the branch, `x + f(norm(x))`.
+</details>
+
+### 29. 🔁 RoPE rotates q and k by their *absolute* position. Where does *relative* position come from? And what does it get applied to?
+
+<details><summary>Answer</summary>
+
+Rotating q at position m by angle mθ and k at n by nθ makes q·k depend only on (m − n)θ: rotations compose, and a dot product only sees the angle *between* vectors. Applied per head, to **q and k only** (not v), after splitting into heads, with pairs of dimensions rotating at different frequencies.
+</details>

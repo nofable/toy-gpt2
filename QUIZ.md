@@ -9,7 +9,7 @@ Come back to these every few sessions.
 
 ## Losses and what they mean
 
-### 1. 🔁 What does a model learn first?
+### 1. ✅ What does a model learn first?
 Training on TinyStories starts at a loss of 10.87. Before it learns any grammar, what's the simplest thing that drives the loss down fast?
 
 <details><summary>Answer</summary>
@@ -41,7 +41,7 @@ What should an untrained model's loss be with a vocabulary of V tokens, and what
 
 ## Attention
 
-### 4. 🔁 Why divide by √(head size)?
+### 4. ✅ Why divide by √(head size)?
 You forget the `/ sqrt(hs)` and hs = 64. What happens?
 
 <details><summary>Answer</summary>
@@ -49,7 +49,7 @@ You forget the `/ sqrt(hs)` and hs = 64. What happens?
 Each score is a sum of 64 products, so its std is about √64 = **8× larger**. Softmax over large scores becomes **nearly one-hot**: each position locks onto one other position, roughly at random. Softmax's gradient there is about 0, so attention **can't learn to shift its focus**. Training stalls. Scaling keeps the scores at a variance of about 1 whatever the head size.
 </details>
 
-### 5. 🔁 What if you drop the causal mask?
+### 5. ✅ What if you drop the causal mask?
 What happens to the training loss, and to `generate`?
 
 <details><summary>Answer</summary>
@@ -73,7 +73,7 @@ The embedding turns *the current* token into a vector, and the output predicts *
 Both use **one shared space of token vectors**. Input: token X → e_X. Output: logit(X) = h · e_X ("how well does the final state match X?"). The blocks' job is to move the residual stream from *current token* towards *next token*. Shapes: Embedding is (V, C), and Linear(C, V) stores (V, C), so no transpose is needed. Trade-off: it saves V×C parameters (about 30% of GPT-2) and helps rare tokens, but it adds a bias towards repeating the current token. Many large models don't tie.
 </details>
 
-### 7b. 🔁 Why can't RoPE tell positions apart in "3 3 3 3 3"?
+### 7b. ✅ Why can't RoPE tell positions apart in "3 3 3 3 3"?
 With learned position embeddings, a sequence of identical tokens gives different outputs at each position. With RoPE it doesn't. Why not?
 
 <details><summary>Answer</summary>
@@ -117,7 +117,7 @@ A fresh optimizer = m and v start at 0 = unreliable step sizes **at a high learn
 Weight decay pulls towards **0**. That's a sensible default for weight matrices (small weights mean a simpler function), but **not for a LayerNorm scale, whose neutral value is 1**: pulling it to 0 shrinks the signal into every sub-layer. Biases shift rather than scale, and there are very few of them, so regularising them gains nothing. Rule: decay `p.dim() >= 2`.
 </details>
 
-### 11. 🔁 What is gradient clipping protecting against?
+### 11. ✅ What is gradient clipping protecting against?
 
 <details><summary>Answer</summary>
 
@@ -150,7 +150,7 @@ Weight decay pulls towards **0**. That's a sensible default for weight matrices 
 `view` = the same memory with a new shape (free), but only if the memory layout allows it. `transpose` swaps strides without moving data, so a `view` afterwards fails. `.contiguous()` copies the data into the new order. `reshape` = view-or-copy automatically.
 </details>
 
-### 15. 🔁 Which of these bite?
+### 15. ✅ Which of these bite?
 `torch.Tensor([...])` · `k.T` on a 4D tensor · `for x in some_dict` · calling `module.forward(x)` · `nn.ModuleList(x)`
 
 <details><summary>Answer</summary>
@@ -214,14 +214,14 @@ exponent (range), so no overflow past 65,504 or underflow of small gradients, an
 **bf16 ≫ `torch.compile` > Flash Attention.** bf16 moves *every* matmul (≈100% of FLOPs) onto the tensor cores: 67 → 989 TFLOPS on an H100, about 15×. `torch.compile` does **not** touch the matmuls. It fuses the **elementwise glue** (norms, SiLU, residual adds, RoPE), which is ~0% of FLOPs but a big share of *time*, because each unfused op is a full round trip to HBM. Flash Attention fuses the T×T attention so the score matrix never leaves SRAM. Rank by **share of time**, not share of FLOPs. The gap between the two is exactly what MFU measures.
 </details>
 
-### 21. 🔁 Does a tokenizer with more bytes per token make each token cost more compute?
+### 21. ✅ Does a tokenizer with more bytes per token make each token cost more compute?
 
 <details><summary>Answer</summary>
 
 **No.** Inside the model every token is one vector of size C, so FLOPs per token = 6N (+ attention) regardless of what text it stands for. Bytes per token decide how much **text** a token budget covers (10B GPT-2 tokens ≈ 40 GB of English), and they matter when *comparing losses* (bits per byte), not for compute.
 </details>
 
-### 22. 🔁 `F.rms_norm(x, normalized_shape, ...)` with x of shape (B, T, C): what goes in `normalized_shape`, and what goes wrong with `x.shape`?
+### 22. ✅ `F.rms_norm(x, normalized_shape, ...)` with x of shape (B, T, C): what goes in `normalized_shape`, and what goes wrong with `x.shape`?
 
 <details><summary>Answer</summary>
 
@@ -250,7 +250,7 @@ Run 8 micro-batches, calling `backward()` on each **without** `zero_grad` in bet
 **Scaled init:** each block **adds** two outputs (attention, MLP) into the residual stream, so 12 layers add 24 random contributions and the variance grows with depth. Shrinking the init of the layers that write into the stream by 1/√(2·layers) keeps the stream's scale roughly constant at the start of training.
 </details>
 
-### 26. 🔁 Delete the `/ grad_accum` (so gradients are 8× too big). What happens with AdamW? With plain SGD?
+### 26. ✅ Delete the `/ grad_accum` (so gradients are 8× too big). What happens with AdamW? With plain SGD?
 
 <details><summary>Answer</summary>
 

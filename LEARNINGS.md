@@ -84,3 +84,11 @@ Result: **30M params** (6 layers, 6 heads, 384 dim, 256 context; 19M of it is th
 - **What I watched for:** NaN / loss spikes, grad norm climbing past ~1 (steady at 0.2–0.3), throughput or memory drift, and val flattening early.
 - **Samples:** fluent, structured (bullet lists), on-topic, but confidently wrong on facts (made up a "UN Convention on the Law of the Land"). Knowledge needs far more parameters than fluency does.
 - **Ops:** monitor with one ssh check every 30 min, not a live tail. `pkill -f pattern` over ssh can kill your own ssh session if the pattern appears in the command line.
+
+## Milestone 8: Polish and publish
+
+- **Explain-back** of `train.py` (up to the first `opt.step()`) and the architecture. Gaps found and fixed: what `Dist`/DDP does, `no_sync`, `grad_accum`, SwiGLU as a *gate*, residuals as a *gradient highway*, RoPE applied to q/k only after the head split.
+- **Adam is (nearly) scale-invariant:** the update is ≈ m/√v, so an 8× gradient changes almost nothing; clipping is a spike limiter, not a step-size control.
+- **RoPE can't distinguish "3 3 3 3 3":** the attention weights differ by position, but every v is identical, so every weighted average is identical. Position only enters through *which content gets mixed*.
+- **Final quiz:** 9 ✅, 13 🟡, 3 ❌. Revisit: the gradient highway (#18, #28), bf16 precision vs range (#19), memory-bound vs compute-bound ranking (#17, #20), vocab padding and scaled init (#25).
+- **Published:** github.com/nofable/toy-gpt2, after scrubbing a private email from the git history before the first push.

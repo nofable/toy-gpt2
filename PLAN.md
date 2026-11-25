@@ -35,7 +35,7 @@ Build a GPT from scratch, train it, and publish it, as a learning project with c
 | 5 | Experiments | ✅ Done, 2026-11-16 (RoPE −0.10, post-LN −0.05) |
 | 6 | Scale-up prep | ✅ Done, 2026-11-18 (182k tok/s, 50% MFU on A100; budget $14.50) |
 | 7 | GPT-2 124M cloud run | ✅ Done, 2026-11-18 (val 3.045, HellaSwag 0.308 vs GPT-2 0.296, $14.16) |
-| 8 | Polish & publish | ▶️ Next |
+| 8 | Polish & publish | ▶️ Published 2026-11-25 (github.com/nofable/toy-gpt2); final quiz left |
 
 ## Milestones
 

@@ -33,9 +33,9 @@ Build a GPT from scratch, train it, and publish it, as a learning project with c
 | 3 | GPT model | ✅ Done, 2026-11-12 (char val 1.66 vs bigram 2.49) |
 | 4 | Training loop + TinyStories | ✅ Done, 2026-11-15 (30M params, val 1.674) |
 | 5 | Experiments | ✅ Done, 2026-11-16 (RoPE −0.10, post-LN −0.05) |
-| 6 | Scale-up prep | ▶️ Next |
-| 7 | GPT-2 124M cloud run | |
-| 8 | Polish & publish | |
+| 6 | Scale-up prep | ✅ Done, 2026-11-18 (182k tok/s, 50% MFU on A100; budget $14.50) |
+| 7 | GPT-2 124M cloud run | ✅ Done, 2026-11-18 (val 3.045, HellaSwag 0.308 vs GPT-2 0.296, $14.16) |
+| 8 | Polish & publish | ▶️ Next |
 
 ## Milestones
 

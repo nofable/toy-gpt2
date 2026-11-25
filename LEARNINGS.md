@@ -64,3 +64,23 @@ Result: **30M params** (6 layers, 6 heads, 384 dim, 256 context; 19M of it is th
 - **RMSNorm: same loss, same speed.** It first looked slower (median 6.8k vs 7.2k tok/s), but the log showed the Mac slowing mid-run (8.3k → 5.3k). Fused `F.rms_norm` gained ~2%, within noise: norms are a small slice of each step (**Amdahl's law**). Lesson: benchmark speed back-to-back, never trust the median of one long laptop run.
 - **SwiGLU: small gain (−0.007)**, consistent with the literature.
 - **My predictions:** 3/5 right on loss. The two misses (post-LN, RoPE) were the most instructive results.
+
+## Milestone 6: Scale-up prep
+
+- **Size the run by time, not tokens.** Measure seconds per step on the real GPU, then `max_iters = hours / sec_per_step`. The calibration window (steps 20–70) gave 2.87 s/step → 18,472 steps → 9.68B tokens in a 15 h budget.
+- **Compute rule of thumb:** training FLOPs ≈ 6N per token (2N forward, 4N backward) plus attention's 12·L·C·T, about 855M FLOPs/token for 124M params at T=1024. **MFU** = achieved FLOPs / peak. 50% on an A100 is good for a single GPU.
+- **What made it fast:** bf16 autocast (tensor cores, half the memory traffic), Flash attention via `scaled_dot_product_attention` (never materialises the T×T matrix), `torch.compile` (fuses elementwise ops, so fewer trips to memory), fused AdamW, TF32, vocab padded to 50,304 (a multiple of 128). Most ops are **memory-bound**, not compute-bound, so the wins come from moving fewer bytes.
+- **bf16 vs fp16:** bf16 keeps fp32's exponent range (no loss scaling needed) but has fewer mantissa bits. Master weights and the optimizer stay in fp32.
+- **Gradient accumulation:** the GPU fits 64×1024 tokens, but the optimizer wants ~0.5M per step, so sum gradients over 8 micro-batches (each loss divided by 8) before one `optimizer.step()`.
+- **Scaled init:** residual output projections get std 0.02/√(2·n_layer), so the residual stream's variance doesn't grow with depth.
+- **Ops before spending:** a 15-minute dry run on the real box caught a real bug (resume loaded the wrong run). Also checked: the CUDA driver version (torch for CUDA 13 needs driver ≥ 580, or it silently falls back to CPU), atomic checkpoint writes, a NaN guard before saving, and a final eval even when stopped by the time budget.
+
+## Milestone 7: The GPT-2 124M run
+
+- **Setup:** 1× A100 80GB PCIe on Vast.ai at $0.884/h. 9.85B tokens of pre-tokenized FineWeb-Edu (100 shards downloaded in 74 s). 182k tok/s, 47.6 GB memory, flat for the whole run.
+- **Result:** 18,472 steps × 524,288 tokens = 9.68B tokens in 14.9 h. **Val loss 3.045. HellaSwag 0.3078 vs OpenAI GPT-2 124M's 0.2955**, with roughly 10× fewer training tokens. Better data (FineWeb-Edu vs WebText) and a modern stack (RoPE, SwiGLU, RMSNorm) beat scale. **Total spend: $14.16** including the dry run.
+- **Shape of the curve:** fast drop to ~3.7 in the first 0.8B tokens, then a slow grind. The last third (LR decaying to its floor) gained ~0.1. Train ≈ val throughout: every token seen once, so no overfitting.
+- **Train above val is fine:** train loss is measured on whichever shard is loading, and some shards are harder than others. Val pulling *above* train would be the warning sign.
+- **What I watched for:** NaN / loss spikes, grad norm climbing past ~1 (steady at 0.2–0.3), throughput or memory drift, and val flattening early.
+- **Samples:** fluent, structured (bullet lists), on-topic, but confidently wrong on facts (made up a "UN Convention on the Law of the Land"). Knowledge needs far more parameters than fluency does.
+- **Ops:** monitor with one ssh check every 30 min, not a live tail. `pkill -f pattern` over ssh can kill your own ssh session if the pattern appears in the command line.
